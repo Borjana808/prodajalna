@@ -47,29 +47,55 @@ function davcnaStopnja(izvajalec, zanr) {
 
 // Prikaz seznama pesmi na strani
 streznik.get('/', function(zahteva, odgovor) {
-  pb.all("SELECT Track.TrackId AS id, Track.Name AS pesem, \
+   if(zahteva.session.stranka){
           Artist.Name AS izvajalec, Track.UnitPrice * " +
+    pb.all("SELECT Track.TrackId AS id, Track.Name AS pesem, \
           razmerje_usd_eur + " AS cena, \
+            Artist.Name AS izvajalec, Track.UnitPrice * " +
           COUNT(InvoiceLine.InvoiceId) AS steviloProdaj, \
+            razmerje_usd_eur + " AS cena, \
           Genre.Name AS zanr \
+            COUNT(InvoiceLine.InvoiceId) AS steviloProdaj, \
           FROM Track, Album, Artist, InvoiceLine, Genre \
+            Genre.Name AS zanr \
           WHERE Track.AlbumId = Album.AlbumId AND \
+            FROM Track, Album, Artist, InvoiceLine, Genre \
           Artist.ArtistId = Album.ArtistId AND \
+            WHERE Track.AlbumId = Album.AlbumId AND \
           InvoiceLine.TrackId = Track.TrackId AND \
+            Artist.ArtistId = Album.ArtistId AND \
           Track.GenreId = Genre.GenreId \
+            InvoiceLine.TrackId = Track.TrackId AND \
           GROUP BY Track.TrackId \
+            Track.GenreId = Genre.GenreId \
           ORDER BY steviloProdaj DESC, pesem ASC \
+            GROUP BY Track.TrackId \
           LIMIT 100", function(napaka, vrstice) {
+            ORDER BY steviloProdaj DESC, pesem ASC \
     if (napaka)
+            LIMIT 100", function(napaka, vrstice) {
       odgovor.sendStatus(500);
+      if (napaka)
     else {
+        odgovor.sendStatus(500);
         for (var i=0; i<vrstice.length; i++)
+      else {
           vrstice[i].stopnja = davcnaStopnja(vrstice[i].izvajalec, vrstice[i].zanr);
+          for (var i=0; i<vrstice.length; i++)
         odgovor.render('seznam', {seznamPesmi: vrstice});
+            vrstice[i].stopnja = davcnaStopnja(vrstice[i].izvajalec, vrstice[i].zanr);
       }
+          odgovor.render('seznam', {seznamPesmi: vrstice});
   })
-})
-
+        }
+    })
+    
+  }
+  else{
+      odgovor.redirect('/prijava');
+  }
+  
+  
 // Dodajanje oz. brisanje pesmi iz košarice
 streznik.get('/kosarica/:idPesmi', function(zahteva, odgovor) {
   var idPesmi = parseInt(zahteva.params.idPesmi);
@@ -200,6 +226,7 @@ streznik.post('/prijava', function(zahteva, odgovor) {
   var form = new formidable.IncomingForm();
   
   form.parse(zahteva, function (napaka1, polja, datoteke) {
+    zahteva.session.stranka = polja.seznamStrank;
     var napaka2 = false;
     try {
       var stmt = pb.prepare("\
@@ -209,7 +236,7 @@ streznik.post('/prijava', function(zahteva, odgovor) {
     	  Phone, Fax, Email, SupportRepId) \
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
       //TODO: add fields and finalize
-      //stmt.run("", "", "", "", "", "", "", "", "", "", "", 3); 
+      stmt.run(polja.FirstName, polja.LastName, polja.Company, polja.Address, polja.City, polja.State, polja.Country, polja.PostalCode, polja.Phone, polja.Fax, polja.Email, 3); 
       //stmt.finalize();
     } catch (err) {
       napaka2 = true;
@@ -218,7 +245,19 @@ streznik.post('/prijava', function(zahteva, odgovor) {
     odgovor.end();
   });
 })
-
+  if(napaka2){
+      vrniStranke(function(napaka1, stranke){
+        vrniRacune(function(napaka2, racuni) {
+            odgovor.render('prijava',{sporocilo: "Prišlo je do napake pri registraciji nove stranke. Prosim preverite vnešene podatke in poskusite znova.", seznamStrank: stranke, seznamRacunov: racuni});
+        })
+      })
+    }else {
+      vrniStranke(function(napaka1, stranke) {
+          vrniRacune(function(napaka2, racuni) {
+              odgovor.render('prijava', {sporocilo: "Stranka je bila uspešno registrirana.", seznamStrank: stranke, seznamRacunov: racuni});
+          })
+      })
+    }
 // Prikaz strani za prijavo
 streznik.get('/prijava', function(zahteva, odgovor) {
   vrniStranke(function(napaka1, stranke) {
@@ -239,6 +278,7 @@ streznik.post('/stranka', function(zahteva, odgovor) {
 
 // Odjava stranke
 streznik.post('/odjava', function(zahteva, odgovor) {
+   zahteva.session.stranka = null;
     odgovor.redirect('/prijava') 
 })
 
